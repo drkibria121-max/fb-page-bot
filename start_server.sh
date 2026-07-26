@@ -4,6 +4,9 @@
 # Run: bash start_server.sh
 # ============================================
 
+echo "Locking wake..."
+termux-wake-lock
+
 echo "Starting VPS Server..."
 cd "$(dirname "$0")"
 python3 vps_server.py &
@@ -18,8 +21,6 @@ echo "========================================="
 echo "  SERVER RUNNING!"
 echo "========================================="
 echo ""
-echo "Local: http://127.0.0.1:5000"
 echo "Tunnel URL from logs above (https://xxx.serveousercontent.com)"
-echo ""
 echo "Set VPS URL in bot: /setvps <tunnel_url>"
 echo "========================================="
