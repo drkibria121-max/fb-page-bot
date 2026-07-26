@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from flask import Flask, request, jsonify
 
+IS_TERMUX = os.path.exists("/data/data/com.termux")
+
 app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -14,6 +16,11 @@ logger = logging.getLogger(__name__)
 RESULTS = {}
 
 def find_chrome_binary():
+    if IS_TERMUX:
+        for p in ["/data/data/com.termux/files/usr/bin/chromium-browser",
+                   "/data/data/com.termux/files/usr/bin/chromium"]:
+            if os.path.exists(p):
+                return p
     candidates = [
         "/usr/bin/chromium-browser",
         "/usr/bin/chromium",
@@ -29,6 +36,11 @@ def find_chrome_binary():
     return None
 
 def find_chromedriver():
+    if IS_TERMUX:
+        for p in ["/data/data/com.termux/files/usr/bin/chromedriver",
+                   "/data/data/com.termux/files/usr/bin/chromedriver-149"]:
+            if os.path.exists(p):
+                return p
     candidates = [
         "/usr/bin/chromedriver",
         "/usr/local/bin/chromedriver",
@@ -37,6 +49,13 @@ def find_chromedriver():
     for c in candidates:
         if os.path.exists(c):
             return c
+    try:
+        import chromedriver_autoinstaller
+        path = chromedriver_autoinstaller.install()
+        if path:
+            return path
+    except:
+        pass
     return None
 
 def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, page_name):
