@@ -67,12 +67,17 @@ def js_click(driver, element):
     driver.execute_script("arguments[0].click();", element)
 
 def js_set_value(driver, element, value):
-    driver.execute_script("arguments[0].value=''; arguments[0].focus();", element)
+    driver.execute_script("arguments[0].focus();", element)
+    time.sleep(0.3)
     element.clear()
     time.sleep(0.3)
-    for char in value:
-        element.send_keys(char)
-        time.sleep(0.02)
+    driver.execute_script("""
+        var nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        nativeSet.call(arguments[0], arguments[1]);
+        arguments[0].dispatchEvent(new Event('input', {bubbles: true}));
+        arguments[0].dispatchEvent(new Event('change', {bubbles: true}));
+    """, element, value)
+    time.sleep(0.5)
 
 def dismiss_popups(driver, job_id):
     popup_texts = ["OK", "Not now", "Allow", "Accept", "Got it", "Close", "Dismiss",
@@ -222,28 +227,81 @@ def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, pa
 
         logger.info(f"[Job {job_id}] Filling page name...")
         page_name_selectors = [
+            (By.XPATH, "//span[contains(text(),'Page name')]/following::input[1]"),
+            (By.XPATH, "//span[contains(text(),'Page name (required)')]/following::input[1]"),
+            (By.XPATH, "//*[contains(text(),'Page name')]/ancestor::div[1]//input[@type='text']"),
+            (By.XPATH, "//label[contains(text(),'Page name')]/following::input[1]"),
+            (By.XPATH, "//label[contains(.,'Page name')]//input"),
             (By.XPATH, "//input[@placeholder='Page name']"),
             (By.XPATH, "//input[contains(@aria-label,'Page name')]"),
             (By.XPATH, "//input[contains(@aria-label,'page name')]"),
             (By.XPATH, "//input[contains(@aria-label,'Page Name')]"),
-            (By.XPATH, "//label[contains(text(),'Page name')]/following::input[1]"),
-            (By.XPATH, "//label[contains(.,'Page name')]//input"),
-            (By.XPATH, "//*[contains(text(),'Page name')]/ancestor::div[1]//input"),
             (By.XPATH, "//div[contains(@data-testid,'page_name')]//input"),
             (By.CSS_SELECTOR, "input[placeholder*='Page' i]"),
             (By.CSS_SELECTOR, "input[aria-label*='Page' i]"),
             (By.CSS_SELECTOR, "input[aria-label*='name' i]"),
-            (By.XPATH, "//form//input[@type='text'][1]"),
-            (By.XPATH, "//div[contains(@role,'main')]//input[@type='text']"),
         ]
         page_name_input = find_and_interact(driver, page_name_selectors, job_id, "Page Name", page_name)
 
         if not page_name_input:
-            screenshot_path = f"/tmp/debug_{job_id}.png"
+            logger.info(f"[Job {job_id}] Selectors failed, trying JS fallback for page name input...")
             try:
-                driver.save_screenshot(screenshot_path)
-            except:
-                pass
+                page_name_input = driver.execute_script("""
+                    var spans = document.querySelectorAll('span');
+                    for (var i = 0; i < spans.length; i++) {
+                        var text = spans[i].textContent.trim();
+                        if (text === 'Page name (required)' || text === 'Page name') {
+                            var parent = spans[i].closest('div');
+                            if (parent) {
+                                var input = parent.querySelector('input[type="text"]') || parent.parentElement.querySelector('input[type="text"]');
+                                if (input) return input;
+                            }
+                            var sibling = spans[i].nextElementSibling;
+                            while (sibling) {
+                                if (sibling.tagName === 'INPUT') return sibling;
+                                var inner = sibling.querySelector('input');
+                                if (inner) return inner;
+                                sibling = sibling.nextElementSibling;
+                            }
+                        }
+                    }
+                    var inputs = document.querySelectorAll('input[type="text"]');
+                    for (var j = 0; j < inputs.length; j++) {
+                        if (inputs[j].offsetParent !== null) return inputs[j];
+                    }
+                    return null;
+                """)
+                if page_name_input:
+                    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", page_name_input)
+                    time.sleep(0.5)
+                    driver.execute_script("arguments[0].click();", page_name_input)
+                    time.sleep(0.5)
+                    driver.execute_script("""
+                        var nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                        nativeSet.call(arguments[0], arguments[1]);
+                        arguments[0].dispatchEvent(new Event('input', {bubbles: true}));
+                        arguments[0].dispatchEvent(new Event('change', {bubbles: true}));
+                    """, page_name_input, page_name)
+                    time.sleep(0.5)
+                    logger.info(f"[Job {job_id}] Page name filled via JS fallback")
+            except Exception as e:
+                logger.error(f"[Job {job_id}] JS fallback failed: {e}")
+                page_name_input = None
+
+        if not page_name_input:
+            try:
+                page_source = driver.page_source
+                debug_dir = os.path.expanduser("~/logs")
+                os.makedirs(debug_dir, exist_ok=True)
+                with open(f"{debug_dir}/debug_page_source.html", "w", encoding="utf-8") as f:
+                    f.write(page_source)
+                driver.save_screenshot(f"{debug_dir}/debug_screenshot.png")
+                logger.info(f"[Job {job_id}] Debug files saved to {debug_dir}/")
+                input_tags = driver.find_elements(By.TAG_NAME, "input")
+                for i, inp in enumerate(input_tags):
+                    logger.info(f"[Job {job_id}] Input[{i}]: type={inp.get_attribute('type')}, placeholder={inp.get_attribute('placeholder')}, aria-label={inp.get_attribute('aria-label')}, name={inp.get_attribute('name')}")
+            except Exception as e:
+                logger.error(f"[Job {job_id}] Debug save failed: {e}")
             RESULTS[job_id] = {"status": "error", "message": "Could not find page name input. Facebook layout may have changed."}
             driver.quit()
             return
