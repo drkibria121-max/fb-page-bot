@@ -1,0 +1,5 @@
+python-telegram-bot>=20.0
+httpx>=0.24.0
+requests>=2.31.0
+flask>=3.0.0
+selenium>=4.15.0

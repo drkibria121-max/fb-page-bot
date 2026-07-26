@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.pid
+.env
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+Thumbs.db
+bot_config.json
+user_data.json
+page_log.json

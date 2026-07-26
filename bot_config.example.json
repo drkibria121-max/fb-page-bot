@@ -1,0 +1,8 @@
+{
+    "bot_token": "YOUR_BOT_TOKEN_HERE",
+    "admin_id": 123456789,
+    "group_id": -1001234567890,
+    "vps_url": "http://YOUR_VPS_IP:5000",
+    "allowed_users": {},
+    "banned_users": []
+}
