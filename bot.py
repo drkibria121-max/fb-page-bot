@@ -1051,31 +1051,22 @@ def build_app():
 
 def main():
     clear_expired_data()
-    max_retries = 999999
-    base_delay = 3
-    max_delay = 60
-
-    for attempt in range(max_retries):
-        try:
-            logger.warning(f"[Attempt {attempt + 1}] Starting bot...")
-            app = build_app()
-            app.run_polling(
-                drop_pending_updates=True,
-                poll_interval=2.0,
-                allowed_updates=Update.ALL_TYPES,
-            )
-        except (NetworkError, TimedOut) as e:
-            logger.error(f"Network error: {e}")
-        except Forbidden as e:
-            logger.error(f"Forbidden error (check bot token): {e}")
-        except BadRequest as e:
-            logger.error(f"Bad request error: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}\n{traceback.format_exc()}")
-
-        delay = min(base_delay * (2 ** (attempt % 6)), max_delay)
-        logger.warning(f"Restarting in {delay} seconds...")
-        time.sleep(delay)
+    try:
+        logger.warning("Starting bot...")
+        app = build_app()
+        app.run_polling(
+            drop_pending_updates=True,
+            poll_interval=2.0,
+            allowed_updates=Update.ALL_TYPES,
+        )
+    except (NetworkError, TimedOut) as e:
+        logger.error(f"Network error: {e}")
+    except Forbidden as e:
+        logger.error(f"Forbidden error (check bot token): {e}")
+    except BadRequest as e:
+        logger.error(f"Bad request error: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}\n{traceback.format_exc()}")
 
 if __name__ == "__main__":
     main()
