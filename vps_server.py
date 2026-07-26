@@ -112,9 +112,10 @@ def dismiss_popups(driver, job_id):
         pass
 
 def find_and_interact(driver, selectors, job_id, field_name, value=None, click_only=False):
-    for by, selector in selectors:
+    for i, (by, selector) in enumerate(selectors):
         try:
-            el = WebDriverWait(driver, 8).until(
+            logger.info(f"[Job {job_id}] Trying {field_name} selector {i+1}/{len(selectors)}: {selector[:60]}")
+            el = WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((by, selector))
             )
             if not el.is_displayed():
@@ -164,6 +165,8 @@ def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, pa
     logger.info(f"[Job {job_id}] Chrome: {chrome_binary}, Driver: {chromedriver_path}")
 
     driver = None
+    debug_dir = os.path.expanduser("~/logs")
+    os.makedirs(debug_dir, exist_ok=True)
     try:
         options = Options()
         options.binary_location = chrome_binary
@@ -171,14 +174,22 @@ def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, pa
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--window-size=1280,720")
         options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-infobars")
-        options.add_argument("--start-maximized")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-sync")
+        options.add_argument("--no-first-run")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--js-flags=--max-old-space-size=256")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--disable-breakpad")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option("useAutomationExtension", False)
 
         service = Service(chromedriver_path)
         driver = webdriver.Chrome(service=service, options=options)
@@ -311,6 +322,10 @@ def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, pa
             return
 
         logger.info(f"[Job {job_id}] Filling category...")
+        try:
+            driver.save_screenshot(f"{debug_dir}/after_page_name.png")
+        except:
+            pass
         category_selectors = [
             (By.CSS_SELECTOR, "input[aria-label='Category (required)']"),
             (By.CSS_SELECTOR, "input[aria-label*='Category']"),
@@ -324,6 +339,13 @@ def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, pa
         category_input = find_and_interact(driver, category_selectors, job_id, "Category", "Travel")
 
         if not category_input:
+            logger.error(f"[Job {job_id}] Category input NOT FOUND! Saving debug info...")
+            try:
+                driver.save_screenshot(f"{debug_dir}/category_fail.png")
+                with open(f"{debug_dir}/category_fail_source.html", "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
+            except:
+                pass
             RESULTS[job_id] = {"status": "error", "message": "Could not find category input field."}
             driver.quit()
             return
