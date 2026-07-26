@@ -506,14 +506,17 @@ async def setvps_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Admin only!")
         return
     if not context.args:
-        await update.message.reply_text("Usage: /setvps <url>")
+        await update.message.reply_text("Usage: /setvps <url>\nExample: /setvps https://example.com")
         return
 
     vps_url = context.args[0].rstrip("/")
-    config = load_config()
-    config["vps_url"] = vps_url
-    save_config(config)
-    await update.message.reply_text(f"VPS URL set to: {vps_url}")
+    try:
+        config = load_config()
+        config["vps_url"] = vps_url
+        save_config(config)
+    except Exception as e:
+        logger.error(f"Failed to save VPS URL to config: {e}")
+    await update.message.reply_text(f"VPS URL set to: {vps_url}\n\n⚠️ Note: On Railway, this resets on restart.\nSet VPS_URL env var in Railway dashboard for permanent fix.")
 
 async def admin_today_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
