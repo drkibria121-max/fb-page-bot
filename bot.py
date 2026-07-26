@@ -798,6 +798,8 @@ async def create_page_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Access Denied!")
         return ConversationHandler.END
 
+    context.user_data.clear()
+
     saved = get_user_data(query.from_user.id)
     if saved:
         keyboard = [
@@ -814,7 +816,7 @@ async def create_page_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
     else:
-        await query.edit_message_text("Send your Facebook email or phone number:")
+        await query.edit_message_text("Step 1/3: Send your Facebook email or phone number:")
         return FB_NUMBER
 
 async def use_saved_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -826,44 +828,59 @@ async def use_saved_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("No saved data found!")
         return ConversationHandler.END
 
-    context.user_data["fb_password"] = saved["fb_password"]
-    context.user_data["page_name"] = saved["page_name"]
-    await query.edit_message_text("Send your Facebook email or phone number:")
+    context.user_data.clear()
+    context.user_data["fb_number_mode"] = "use_saved"
+
+    await query.edit_message_text(
+        f"Using saved data:\n"
+        f"Password: {saved['fb_password']}\n"
+        f"Page: {saved['page_name']}\n\n"
+        f"Step 1/3: Send your Facebook email or phone number:"
+    )
     return FB_NUMBER
 
 async def enter_new_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Send your Facebook email or phone number:")
+    context.user_data.clear()
+    await query.edit_message_text("Step 1/3: Send your Facebook email or phone number:")
     return FB_NUMBER
 
 async def fb_number_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["fb_number"] = update.message.text
 
-    if "fb_password" in context.user_data and "page_name" in context.user_data:
-        user_id = update.effective_user.id
-        user_name = update.effective_user.first_name or "Unknown"
-        fb_number = context.user_data["fb_number"]
-        fb_password = context.user_data["fb_password"]
-        page_name = context.user_data["page_name"]
+    if context.user_data.get("fb_number_mode") == "use_saved":
+        saved = get_user_data(update.effective_user.id)
+        if saved:
+            user_id = update.effective_user.id
+            user_name = update.effective_user.first_name or "Unknown"
+            fb_number = context.user_data["fb_number"]
+            fb_password = saved["fb_password"]
+            page_name = saved["page_name"]
 
-        set_user_data(user_id, fb_password, page_name)
-        await update.message.reply_text("Processing Ongoing... Please wait.")
+            set_user_data(user_id, fb_password, page_name)
+            await update.message.reply_text(
+                f"Using saved data:\n"
+                f"Password: {fb_password}\n"
+                f"Page: {page_name}\n\n"
+                f"Processing Ongoing... Please wait."
+            )
 
-        thread = threading.Thread(
-            target=send_vps_request,
-            args=(user_id, user_name, fb_number, fb_password, page_name),
-            daemon=True
-        )
-        thread.start()
-        return ConversationHandler.END
+            thread = threading.Thread(
+                target=send_vps_request,
+                args=(user_id, user_name, fb_number, fb_password, page_name),
+                daemon=True
+            )
+            thread.start()
+            context.user_data.clear()
+            return ConversationHandler.END
 
-    await update.message.reply_text("Send your Facebook password:")
+    await update.message.reply_text("Step 2/3: Send your Facebook password:")
     return FB_PASSWORD
 
 async def fb_password_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["fb_password"] = update.message.text
-    await update.message.reply_text("Send the Page name you want to create:")
+    await update.message.reply_text("Step 3/3: Send the Page name you want to create:")
     return PAGE_NAME
 
 async def page_name_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -885,6 +902,7 @@ async def page_name_received(update: Update, context: ContextTypes.DEFAULT_TYPE)
         daemon=True
     )
     thread.start()
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
