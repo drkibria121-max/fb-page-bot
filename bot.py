@@ -61,7 +61,7 @@ def load_config():
         config["admin_id"] = int(os.environ["ADMIN_ID"])
     if os.environ.get("GROUP_ID"):
         config["group_id"] = int(os.environ["GROUP_ID"])
-    if os.environ.get("VPS_URL"):
+    if os.environ.get("VPS_URL") and not config.get("vps_url"):
         config["vps_url"] = os.environ["VPS_URL"]
 
     if not config.get("bot_token"):

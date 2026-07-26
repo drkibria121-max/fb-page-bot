@@ -15,6 +15,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 RESULTS = {}
+QUEUE = []
+ACTIVE_JOBS = 0
+MAX_CONCURRENT = 1
+JOB_LOCK = threading.Lock()
 
 def find_chrome_binary():
     if IS_TERMUX:
@@ -422,10 +426,25 @@ def run_page_creation_task(job_id, user_id, username, fb_number, fb_password, pa
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({"status": "ok", "timestamp": datetime.now().isoformat()})
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "active_jobs": ACTIVE_JOBS,
+        "queue_length": len(QUEUE)
+    })
+
+@app.route('/queue_status', methods=['GET'])
+def queue_status():
+    return jsonify({
+        "active_jobs": ACTIVE_JOBS,
+        "max_concurrent": MAX_CONCURRENT,
+        "queue_length": len(QUEUE),
+        "queue": [{"job_id": j["job_id"], "user_id": j["user_id"]} for j in QUEUE]
+    })
 
 @app.route('/create_page', methods=['POST'])
 def create_page():
+    global ACTIVE_JOBS
     data = request.json
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -437,14 +456,43 @@ def create_page():
 
     job_id = f"{data['user_id']}_{int(time.time())}"
 
-    thread = threading.Thread(
-        target=run_page_creation_task,
-        args=(job_id, data['user_id'], data['username'], data['fb_number'], data['fb_password'], data['page_name']),
-        daemon=True
-    )
-    thread.start()
+    job = {
+        "job_id": job_id,
+        "user_id": data['user_id'],
+        "username": data['username'],
+        "fb_number": data['fb_number'],
+        "fb_password": data['fb_password'],
+        "page_name": data['page_name'],
+    }
 
-    return jsonify({"status": "queued", "job_id": job_id})
+    with JOB_LOCK:
+        if ACTIVE_JOBS >= MAX_CONCURRENT:
+            QUEUE.append(job)
+            pos = len(QUEUE)
+            RESULTS[job_id] = {"status": "queued", "queue_position": pos, "message": f"Job queued. Position: {pos}"}
+            logger.info(f"[Job {job_id}] Queued. Active: {ACTIVE_JOBS}, Queue: {len(QUEUE)}")
+            return jsonify({"status": "queued", "job_id": job_id, "queue_position": pos})
+        ACTIVE_JOBS += 1
+
+    logger.info(f"[Job {job_id}] Starting directly. Active: {ACTIVE_JOBS}")
+    thread = threading.Thread(target=run_and_process_next, args=(job,), daemon=True)
+    thread.start()
+    return jsonify({"status": "queued", "job_id": job_id, "queue_position": 0})
+
+def run_and_process_next(job):
+    global ACTIVE_JOBS
+    try:
+        run_page_creation_task(job["job_id"], job["user_id"], job["username"], job["fb_number"], job["fb_password"], job["page_name"])
+    finally:
+        with JOB_LOCK:
+            if QUEUE:
+                next_job = QUEUE.pop(0)
+                logger.info(f"[Queue] Processing next job: {next_job['job_id']}")
+                thread = threading.Thread(target=run_and_process_next, args=(next_job,), daemon=True)
+                thread.start()
+            else:
+                ACTIVE_JOBS -= 1
+                logger.info(f"[Queue] No more jobs. Active: {ACTIVE_JOBS}")
 
 @app.route('/job_status/<job_id>', methods=['GET'])
 def job_status(job_id):
